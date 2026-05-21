@@ -1,3 +1,4 @@
+import logging
 from typing import Callable, TypeVar
 from tplinkrouterc6u import TplinkRouterProvider
 from tplinkrouterc6u.common.exception import ClientException
@@ -18,6 +19,14 @@ VALID_CHANNELS_5G = [
     132, 136, 140, 144, 149, 153, 157, 161, 165,
 ]
 
+# tplinkrouterc6u'ning bir nechta client'lari (c80, re330, ...) network xatolarida
+# self._logger.error(...) chaqiradi va logger=None bo'lsa
+# "'NoneType' object has no attribute 'error'" AttributeError sodir bo'ladi.
+# Real logger uzatish bilan bu yashirin bug'ni oldini olamiz.
+_logger = logging.getLogger("router_controller")
+if not _logger.handlers:
+    _logger.addHandler(logging.NullHandler())
+
 
 def get_router_client():
     cfg = Config()
@@ -31,6 +40,7 @@ def get_router_client():
             cfg.get_host(),
             cfg.get_password(),
             username=cfg.get_username(),
+            logger=_logger,
         )
         client.authorize()
         return client

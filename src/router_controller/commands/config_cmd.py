@@ -1,6 +1,6 @@
 from typing import Optional
 import typer
-from router_controller.config import Config
+from router_controller.config import Config, STORAGE_FILE, STORAGE_KEYRING
 from router_controller.utils.display import console, print_success, print_error, print_warning
 
 app = typer.Typer(help="Konfiguratsiya boshqarish.", no_args_is_help=True)
@@ -20,9 +20,21 @@ def config_set(
         None, "--username", "-u",
         help="Router foydalanuvchi nomi (odatda 'admin').",
     ),
+    storage: Optional[str] = typer.Option(
+        None, "--storage",
+        help=f"Parolni saqlash usuli: {STORAGE_FILE} (default, chmod 600) "
+             f"yoki {STORAGE_KEYRING} (OS keychain). macOS da keychain har safar so'rashi mumkin.",
+    ),
 ):
     """Router ulanish sozlamalarini saqlash."""
     cfg = Config()
+
+    if storage:
+        try:
+            cfg.set_storage(storage)
+        except (ValueError, RuntimeError) as e:
+            print_error(str(e))
+            raise typer.Exit(1)
 
     if not host:
         host = typer.prompt("Router manzili (misol: http://192.168.0.1)")
@@ -35,7 +47,10 @@ def config_set(
     if username:
         cfg.set_username(username)
 
-    print_success(f"Saqlandi! Host: {cfg.get_host()}, Username: {cfg.get_username()}")
+    print_success(
+        f"Saqlandi! Host: {cfg.get_host()}, Username: {cfg.get_username()}, "
+        f"Storage: {cfg.get_storage()}"
+    )
 
 
 @app.command("show")
@@ -52,6 +67,7 @@ def config_show():
     console.print(f"  [bold]Host:[/bold]      {cfg.get_host()}")
     console.print(f"  [bold]Username:[/bold]  {cfg.get_username()}")
     console.print(f"  [bold]Parol:[/bold]     {'[green]saqlangan[/green]' if has_pass else '[red]topilmadi[/red]'}")
+    console.print(f"  [bold]Storage:[/bold]   {cfg.get_storage()}")
     console.print()
 
 
