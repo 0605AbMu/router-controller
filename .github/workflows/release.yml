@@ -1,0 +1,131 @@
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact_name: router
+            asset_name: router-linux-x86_64
+
+          - os: windows-latest
+            artifact_name: router.exe
+            asset_name: router-windows-x86_64.exe
+
+          - os: macos-latest
+            artifact_name: router
+            asset_name: router-macos-x86_64
+
+          - os: macos-13
+            artifact_name: router
+            asset_name: router-macos-arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python o'rnatish
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Dependencylarni o'rnatish
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install git+https://github.com/AlexandrErohin/TP-Link-Archer-C6U
+          pip install typer[all] rich keyring
+
+      - name: PyInstaller bilan build qilish
+        run: |
+          pyinstaller --onefile --name router src/router_controller/main.py
+
+      - name: Artifact yuklash
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset_name }}
+          path: dist/${{ matrix.artifact_name }}
+
+  release:
+    name: GitHub Release yaratish
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Barcha artifactlarni yuklab olish
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Fayllarni to'g'ri nomlash
+        run: |
+          mv artifacts/router-linux-x86_64/router        artifacts/router-linux-x86_64
+          mv artifacts/router-windows-x86_64.exe/router.exe  artifacts/router-windows-x86_64.exe
+          mv artifacts/router-macos-x86_64/router        artifacts/router-macos-x86_64
+          mv artifacts/router-macos-arm64/router         artifacts/router-macos-arm64
+
+      - name: Release yaratish va fayllarni yuklash
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "router-controller ${{ github.ref_name }}"
+          body: |
+            ## router-controller ${{ github.ref_name }}
+
+            TP-Link router boshqarish uchun standalone CLI.
+            Python yoki pip **kerak emas** — faqat yuklab oling va ishga tushiring.
+
+            ### O'rnatish
+
+            **macOS (Apple Silicon / ARM)**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-macos-arm64 -o router
+            chmod +x router && sudo mv router /usr/local/bin/
+            ```
+
+            **macOS (Intel / x86_64)**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-macos-x86_64 -o router
+            chmod +x router && sudo mv router /usr/local/bin/
+            ```
+
+            **Linux**
+            ```bash
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-linux-x86_64 -o router
+            chmod +x router && sudo mv router /usr/local/bin/
+            ```
+
+            **Windows**
+            `router-windows-x86_64.exe` faylini yuklab oling, istalgan joyga qo'ying va PATH ga qo'shing.
+
+            ### Birinchi sozlash
+            ```bash
+            router config set --host http://192.168.0.1 --password PAROLINGIZ
+            ```
+
+            ### Buyruqlar
+            ```
+            router status
+            router devices
+            router wifi status
+            router wifi channel 2.4 6
+            router reboot
+            ```
+          files: |
+            artifacts/router-linux-x86_64
+            artifacts/router-windows-x86_64.exe
+            artifacts/router-macos-x86_64
+            artifacts/router-macos-arm64
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
