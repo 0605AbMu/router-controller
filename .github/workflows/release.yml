@@ -68,11 +68,12 @@ jobs:
         with:
           path: artifacts
 
-      - name: Fayllarni to'g'ri nomlash
+      - name: Fayllarni release uchun tayyorlash
         run: |
-          mv artifacts/router-linux-x86_64/router          artifacts/router-linux-x86_64
-          mv artifacts/router-windows-x86_64.exe/router.exe artifacts/router-windows-x86_64.exe
-          mv artifacts/router-macos-universal/router        artifacts/router-macos-universal
+          mkdir -p release
+          cp artifacts/router-linux-x86_64/router           release/router-linux-x86_64
+          cp artifacts/router-windows-x86_64.exe/router.exe release/router-windows-x86_64.exe
+          cp artifacts/router-macos-universal/router         release/router-macos-universal
 
       - name: Release yaratish va fayllarni yuklash
         uses: softprops/action-gh-release@v2
@@ -115,9 +116,9 @@ jobs:
             router reboot
             ```
           files: |
-            artifacts/router-linux-x86_64
-            artifacts/router-windows-x86_64.exe
-            artifacts/router-macos-universal
+            release/router-linux-x86_64
+            release/router-windows-x86_64.exe
+            release/router-macos-universal
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
