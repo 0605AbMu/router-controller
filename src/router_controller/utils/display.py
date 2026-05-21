@@ -1,10 +1,20 @@
+import sys
+
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from rich.columns import Columns
 from rich import box
 
-console = Console()
+# Windows'da stdout pipe bo'lganda (masalan, Electron sub-process'dan
+# chaqirilganda) rich `GetConsoleMode` ni chaqirib fail bo'ladi va
+# `legacy_windows=True` deb hisoblaydi. Legacy yo'lda matn cp1252
+# (charmap) bilan encode qilinadi va '✓' / '✗' kabi Unicode belgilar
+# UnicodeEncodeError bilan crash beradi. `legacy_windows=False` bilan
+# bu yo'l butunlay o'chiriladi — rich oddiy stdout'ga utf-8'da yozadi.
+console = Console(
+    legacy_windows=False if sys.platform == "win32" else None,
+)
 
 
 def print_success(msg: str) -> None:
