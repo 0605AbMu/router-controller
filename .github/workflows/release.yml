@@ -17,19 +17,19 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            artifact_name: router
             asset_name: router-linux-x86_64
             pyinstaller_args: ""
+            archive_ext: tar.gz
 
           - os: windows-latest
-            artifact_name: router.exe
-            asset_name: router-windows-x86_64.exe
+            asset_name: router-windows-x86_64
             pyinstaller_args: ""
+            archive_ext: zip
 
           - os: macos-latest
-            artifact_name: router
             asset_name: router-macos-universal
             pyinstaller_args: "--target-arch universal2"
+            archive_ext: tar.gz
 
     steps:
       - name: Checkout
@@ -47,15 +47,34 @@ jobs:
           pip install git+https://github.com/AlexandrErohin/TP-Link-Archer-C6U
           pip install typer[all] rich keyring
 
-      - name: PyInstaller bilan build qilish
+      - name: PyInstaller (--onedir, cold start <1s)
+        shell: bash
         run: |
-          pyinstaller --onefile --name router ${{ matrix.pyinstaller_args }} src/router_controller/main.py
+          pyinstaller --onedir --noconfirm --name router \
+            ${{ matrix.pyinstaller_args }} \
+            src/router_controller/main.py
+          ls -la dist/router/
+
+      - name: Tarballga arxivlash (linux/macos)
+        if: matrix.archive_ext == 'tar.gz'
+        run: |
+          cd dist
+          tar -czf ../${{ matrix.asset_name }}.tar.gz router
+          cd ..
+          ls -la ${{ matrix.asset_name }}.tar.gz
+
+      - name: Zipga arxivlash (windows)
+        if: matrix.archive_ext == 'zip'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/router -DestinationPath ${{ matrix.asset_name }}.zip
+          Get-ChildItem ${{ matrix.asset_name }}.zip
 
       - name: Artifact yuklash
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.asset_name }}
-          path: dist/${{ matrix.artifact_name }}
+          path: ${{ matrix.asset_name }}.${{ matrix.archive_ext }}
 
   release:
     name: GitHub Release yaratish
@@ -71,9 +90,10 @@ jobs:
       - name: Fayllarni release uchun tayyorlash
         run: |
           mkdir -p release
-          cp artifacts/router-linux-x86_64/router           release/router-linux-x86_64
-          cp artifacts/router-windows-x86_64.exe/router.exe release/router-windows-x86_64.exe
-          cp artifacts/router-macos-universal/router         release/router-macos-universal
+          cp artifacts/router-linux-x86_64/router-linux-x86_64.tar.gz       release/
+          cp artifacts/router-macos-universal/router-macos-universal.tar.gz release/
+          cp artifacts/router-windows-x86_64/router-windows-x86_64.zip      release/
+          ls -la release/
 
       - name: Release yaratish va fayllarni yuklash
         uses: softprops/action-gh-release@v2
@@ -82,43 +102,43 @@ jobs:
           body: |
             ## router-controller ${{ github.ref_name }}
 
-            TP-Link router boshqarish uchun standalone CLI.
-            Python yoki pip **kerak emas** — faqat yuklab oling va ishga tushiring.
+            TP-Link router boshqarish uchun standalone CLI bundle.
+            PyInstaller `--onedir` rejimida — cold start <1 soniya
+            (`--onefile` rejimidan ~20× tezroq).
+
+            ### Yangi: `router snapshot --json`
+
+            Bitta chaqiriqda barcha ma'lumotlarni (status + wifi + devices + dhcp +
+            firmware) JSON sifatida qaytaradi. GUI ilovalar uchun ideal.
 
             ### O'rnatish
 
-            **macOS (Apple Silicon + Intel — Universal)**
+            **macOS (Apple Silicon + Intel)**
             ```bash
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-macos-universal -o router
-            chmod +x router && sudo mv router /usr/local/bin/
+            curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-macos-universal.tar.gz
+            tar -xzf router-macos-universal.tar.gz
+            sudo mv router /usr/local/bin/router-bundle
+            sudo ln -s /usr/local/bin/router-bundle/router /usr/local/bin/router
             ```
 
             **Linux**
             ```bash
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-linux-x86_64 -o router
-            chmod +x router && sudo mv router /usr/local/bin/
+            curl -LO https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-linux-x86_64.tar.gz
+            tar -xzf router-linux-x86_64.tar.gz
+            sudo mv router /opt/router && sudo ln -s /opt/router/router /usr/local/bin/router
             ```
 
             **Windows**
-            `router-windows-x86_64.exe` faylini yuklab oling, istalgan joyga qo'ying va PATH ga qo'shing.
+            `router-windows-x86_64.zip` ni yuklab oling, papkani PATH ga qo'shing.
 
             ### Birinchi sozlash
             ```bash
             router config set --host http://192.168.0.1 --password PAROLINGIZ
             ```
-
-            ### Buyruqlar
-            ```
-            router status
-            router devices
-            router wifi status
-            router wifi channel 2.4 6
-            router reboot
-            ```
           files: |
-            release/router-linux-x86_64
-            release/router-windows-x86_64.exe
-            release/router-macos-universal
+            release/router-linux-x86_64.tar.gz
+            release/router-windows-x86_64.zip
+            release/router-macos-universal.tar.gz
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,6 +1,6 @@
 import typer
 from router_controller import __version__
-from router_controller.commands import status, devices, firmware, dhcp, reboot
+from router_controller.commands import status, devices, firmware, dhcp, reboot, snapshot
 from router_controller.commands import wifi, config_cmd
 
 app = typer.Typer(
@@ -21,6 +21,7 @@ app.command("devices")(devices.command)
 app.command("firmware")(firmware.command)
 app.command("dhcp")(dhcp.command)
 app.command("reboot")(reboot.command)
+app.command("snapshot")(snapshot.command)
 
 
 def version_callback(value: bool) -> None:
