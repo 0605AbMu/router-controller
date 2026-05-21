@@ -6,7 +6,7 @@ import json
 import sys
 from typing import Optional
 import typer
-from router_controller.client import get_router_client, get_wifi_channels
+from router_controller.client import get_router_client, get_wifi_radio_info
 from router_controller.utils.display import print_error
 
 
@@ -107,12 +107,22 @@ def command(
             }
 
         if "wifi" in sections:
-            channels, err = _safe(get_wifi_channels, client)
+            radio_info, err = _safe(get_wifi_radio_info, client)
             if err:
                 out["errors"]["wifi_channels"] = err
             else:
+                # Eski clientlar uchun: faqat kanal raqamlari
+                channels = {
+                    band: data.get("channel")
+                    for band, data in radio_info.items()
+                    if data.get("channel") is not None
+                }
                 out["wifi"] = {
                     "channels": channels,  # {"2.4GHz": int, "5GHz": int}
+                    # Yangi (v0.4.0+): har band uchun to'liq radio ma'lumotlari —
+                    # PHY mode (11ax/ac/n) va kanal kengligi (20/40/80/160 MHz).
+                    # GUI bu ma'lumotni real throughput modellashida ishlatadi.
+                    "radio": radio_info,
                     "bands": {
                         "2.4 GHz": {
                             "host": bool(status_obj.wifi_2g_enable) if status_obj else None,
