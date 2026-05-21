@@ -1,13 +1,26 @@
-"""Routerning umumiy holat snimkasi — bitta CLI chaqiriq, bitta authorize(), JSON output.
+"""Routerning umumiy holat snimkasi — bitta CLI chaqiriq, bitta authorize().
 
 GUI ilovalar (WiFiPilot) har bir tab uchun alohida CLI ishga tushirmasligi uchun.
+Default'da JSON chiqaradi. Global --json flag bilan unified schema'da bo'ladi:
+  {"ok": true, "data": {...}, "errors": {section: msg}}
+
+--no-json bilan inson o'qiy oladigan dict ko'rinishi.
 """
 import json
 import sys
 from typing import Optional
 import typer
 from router_controller.client import get_router_client, get_wifi_radio_info
-from router_controller.utils.display import print_error
+from router_controller.utils.display import console, print_error
+from router_controller.utils.output import is_json, emit_data, emit_error
+from router_controller.utils.serializers import (
+    serialize_device,
+    serialize_lease,
+    serialize_firmware,
+    serialize_status,
+    serialize_wifi,
+    classify_exception,
+)
 
 
 def _safe(fn, *args, **kwargs):
@@ -18,42 +31,11 @@ def _safe(fn, *args, **kwargs):
         return None, str(e)
 
 
-def _device_band(t) -> str:
-    s = str(t).lower()
-    if "2g" in s:
-        return "2.4 GHz"
-    if "5g" in s:
-        return "5 GHz"
-    if "wired" in s:
-        return "Kabel"
-    return "Noma'lum"
-
-
-def _serialize_device(d) -> dict:
-    return {
-        "hostname": d.hostname or None,
-        "ip": str(d.ipaddress) if d.ipaddress else None,
-        "mac": str(d.macaddress) if d.macaddress else None,
-        "band": _device_band(d.type),
-        "down_speed": getattr(d, "down_speed", 0) or 0,
-        "up_speed": getattr(d, "up_speed", 0) or 0,
-        "active": bool(getattr(d, "active", True)),
-    }
-
-
-def _serialize_lease(l) -> dict:
-    return {
-        "hostname": l.hostname or None,
-        "ip": str(l.ipaddress),
-        "mac": str(l.macaddress),
-        "lease_time": str(l.lease_time),
-    }
-
-
 def command(
     json_out: bool = typer.Option(
         True, "--json/--no-json",
-        help="JSON formatda chiqarish (default).",
+        help="JSON formatda chiqarish (default). Eski flag — global --json bilan "
+             "moslashtirish uchun saqlanadi.",
     ),
     include: Optional[str] = typer.Option(
         None, "--include", "-i",
@@ -68,85 +50,52 @@ def command(
                 ["status", "firmware", "wifi", "devices", "dhcp"])
     sections = {s.strip().lower() for s in sections}
 
-    out: dict = {"sections": list(sections), "errors": {}}
+    data: dict = {"sections": sorted(sections), "router_class": None}
+    errors: dict = {}
     client = None
     try:
         client = get_router_client()
-        out["router_class"] = type(client).__name__
+        data["router_class"] = type(client).__name__
 
         if "firmware" in sections:
             fw, err = _safe(client.get_firmware)
             if err:
-                out["errors"]["firmware"] = err
+                errors["firmware"] = err
             else:
-                out["firmware"] = {
-                    "model": fw.model,
-                    "hardware": fw.hardware_version,
-                    "firmware": fw.firmware_version,
-                }
+                data["firmware"] = serialize_firmware(fw)
 
         status_obj = None
-        if "status" in sections or "devices" in sections:
+        if "status" in sections or "devices" in sections or "wifi" in sections:
             status_obj, err = _safe(client.get_status)
             if err:
-                out["errors"]["status"] = err
+                errors["status"] = err
 
         if "status" in sections and status_obj is not None:
-            out["status"] = {
-                "wifi_2g": bool(status_obj.wifi_2g_enable),
-                "wifi_5g": bool(status_obj.wifi_5g_enable),
-                "guest_2g": bool(getattr(status_obj, "guest_2g_enable", False)),
-                "guest_5g": bool(getattr(status_obj, "guest_5g_enable", False)),
-                "wan_ipv4": str(status_obj.wan_ipv4_addr) if status_obj.wan_ipv4_addr else None,
-                "lan_ipv4": str(status_obj.lan_ipv4_addr) if status_obj.lan_ipv4_addr else None,
-                "wan_gateway": str(status_obj.wan_ipv4_gateway) if status_obj.wan_ipv4_gateway else None,
-                "clients_total": getattr(status_obj, "clients_total", 0),
-                "wifi_clients_total": getattr(status_obj, "wifi_clients_total", 0),
-                "wired_total": getattr(status_obj, "wired_total", 0),
-                "guest_clients_total": getattr(status_obj, "guest_clients_total", 0),
-            }
+            data["status"] = serialize_status(status_obj)
 
         if "wifi" in sections:
             radio_info, err = _safe(get_wifi_radio_info, client)
             if err:
-                out["errors"]["wifi_channels"] = err
+                errors["wifi_channels"] = err
+                data["wifi"] = serialize_wifi(status_obj, None)
             else:
-                # Eski clientlar uchun: faqat kanal raqamlari
-                channels = {
-                    band: data.get("channel")
-                    for band, data in radio_info.items()
-                    if data.get("channel") is not None
-                }
-                out["wifi"] = {
-                    "channels": channels,  # {"2.4GHz": int, "5GHz": int}
-                    # Yangi (v0.4.0+): har band uchun to'liq radio ma'lumotlari —
-                    # PHY mode (11ax/ac/n) va kanal kengligi (20/40/80/160 MHz).
-                    # GUI bu ma'lumotni real throughput modellashida ishlatadi.
-                    "radio": radio_info,
-                    "bands": {
-                        "2.4 GHz": {
-                            "host": bool(status_obj.wifi_2g_enable) if status_obj else None,
-                            "guest": bool(getattr(status_obj, "guest_2g_enable", False)) if status_obj else None,
-                        },
-                        "5 GHz": {
-                            "host": bool(status_obj.wifi_5g_enable) if status_obj else None,
-                            "guest": bool(getattr(status_obj, "guest_5g_enable", False)) if status_obj else None,
-                        },
-                    },
-                }
+                data["wifi"] = serialize_wifi(status_obj, radio_info)
 
         if "devices" in sections and status_obj is not None:
-            out["devices"] = [_serialize_device(d) for d in status_obj.devices]
+            data["devices"] = [serialize_device(d) for d in status_obj.devices]
 
         if "dhcp" in sections:
             leases, err = _safe(client.get_dhcp_leases)
             if err:
-                out["errors"]["dhcp"] = err
+                errors["dhcp"] = err
             else:
-                out["dhcp"] = [_serialize_lease(l) for l in leases]
+                data["dhcp"] = [serialize_lease(l) for l in leases]
 
     except Exception as e:
-        print_error(str(e))
+        if is_json():
+            emit_error(classify_exception(e), str(e))
+        else:
+            print_error(str(e))
         raise typer.Exit(1)
     finally:
         if client:
@@ -155,10 +104,18 @@ def command(
             except Exception:
                 pass
 
-    if json_out:
+    # Output rejimi:
+    # - Global --json bo'lsa: unified {ok, data, errors} (yangi)
+    # - --json/--no-json local flag (eski) hali ham qo'llab-quvvatlanadi
+    if is_json():
+        emit_data(data, errors=errors or None)
+    elif json_out:
+        # Eski xulq — flat JSON (backwards compatibility, lekin endi global
+        # --json afzal). errors data ichiga qaytariladi.
+        out = dict(data)
+        if errors:
+            out["errors"] = errors
         sys.stdout.write(json.dumps(out, ensure_ascii=False))
         sys.stdout.write("\n")
     else:
-        # Inson o'qiy oladigan ko'rinish — debug uchun
-        from router_controller.utils.display import console
-        console.print(out)
+        console.print({"data": data, "errors": errors})

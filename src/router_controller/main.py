@@ -17,6 +17,7 @@ import typer
 from router_controller import __version__
 from router_controller.commands import status, devices, firmware, dhcp, reboot, snapshot
 from router_controller.commands import wifi, config_cmd
+from router_controller.utils.output import set_json
 
 app = typer.Typer(
     name="router",
@@ -55,8 +56,14 @@ def main(
         is_eager=True,
         help="Versiyani ko'rsatish.",
     ),
+    json_output: bool = typer.Option(
+        False,
+        "--json",
+        help="Strukturali JSON output (GUI/script integration uchun). "
+             "Schema: {ok, data, message, error_code}.",
+    ),
 ) -> None:
-    pass
+    set_json(json_output)
 
 
 if __name__ == "__main__":

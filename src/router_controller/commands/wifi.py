@@ -4,6 +4,7 @@ from tplinkrouterc6u.common.package_enum import Connection
 from router_controller.client import (
     get_router_client,
     get_wifi_channels,
+    get_wifi_radio_info,
     set_wifi_channel,
     VALID_CHANNELS_2G,
     VALID_CHANNELS_5G,
@@ -14,8 +15,9 @@ from router_controller.utils.display import (
     print_channel_info,
     print_success,
     print_error,
-    print_warning,
 )
+from router_controller.utils.output import is_json, emit_data, emit_ok, emit_error
+from router_controller.utils.serializers import serialize_wifi, classify_exception
 
 app = typer.Typer(help="WiFi boshqarish.", no_args_is_help=True)
 
@@ -30,7 +32,11 @@ _BAND_MAP = {
 def _resolve_band(band_str: str):
     result = _BAND_MAP.get(band_str.lower())
     if not result:
-        print_error(f"Noto'g'ri band: '{band_str}'. '2.4' yoki '5' deb yozing.")
+        msg = f"Noto'g'ri band: '{band_str}'. '2.4' yoki '5' deb yozing."
+        if is_json():
+            emit_error("INVALID_INPUT", msg)
+        else:
+            print_error(msg)
         raise typer.Exit(1)
     return result
 
@@ -42,15 +48,22 @@ def wifi_status():
     try:
         client = get_router_client()
         status = client.get_status()
-        print_wifi_status(status)
+        radio_info = get_wifi_radio_info(client)
 
-        channels = get_wifi_channels(client)
-        console.print("  Channellar:")
-        for band, ch in channels.items():
-            print_channel_info(band, ch)
-        console.print()
+        if is_json():
+            emit_data(serialize_wifi(status, radio_info))
+        else:
+            print_wifi_status(status)
+            channels = get_wifi_channels(client)
+            console.print("  Channellar:")
+            for band, ch in channels.items():
+                print_channel_info(band, ch)
+            console.print()
     except Exception as e:
-        print_error(str(e))
+        if is_json():
+            emit_error(classify_exception(e), str(e))
+        else:
+            print_error(str(e))
         raise typer.Exit(1)
     finally:
         if client:
@@ -70,9 +83,16 @@ def wifi_on(
     try:
         client = get_router_client()
         client.set_wifi(connection, True)
-        print_success(f"{label} WiFi yoqildi.")
+        msg = f"{label} WiFi yoqildi."
+        if is_json():
+            emit_ok(msg, data={"band": label, "enabled": True})
+        else:
+            print_success(msg)
     except Exception as e:
-        print_error(str(e))
+        if is_json():
+            emit_error(classify_exception(e), str(e))
+        else:
+            print_error(str(e))
         raise typer.Exit(1)
     finally:
         if client:
@@ -92,9 +112,16 @@ def wifi_off(
     try:
         client = get_router_client()
         client.set_wifi(connection, False)
-        print_success(f"{label} WiFi o'chirildi.")
+        msg = f"{label} WiFi o'chirildi."
+        if is_json():
+            emit_ok(msg, data={"band": label, "enabled": False})
+        else:
+            print_success(msg)
     except Exception as e:
-        print_error(str(e))
+        if is_json():
+            emit_error(classify_exception(e), str(e))
+        else:
+            print_error(str(e))
         raise typer.Exit(1)
     finally:
         if client:
@@ -120,22 +147,34 @@ def wifi_channel(
     valid = VALID_CHANNELS_2G if band_key == "2.4GHz" else VALID_CHANNELS_5G
 
     if channel not in valid:
-        print_error(
-            f"{label} uchun noto'g'ri channel: {channel}\n"
-            f"  Mumkin bo'lganlar: {', '.join(map(str, valid))}"
+        msg = (
+            f"{label} uchun noto'g'ri channel: {channel}. "
+            f"Mumkin bo'lganlar: {', '.join(map(str, valid))}"
         )
+        if is_json():
+            emit_error("INVALID_INPUT", msg)
+        else:
+            print_error(msg)
         raise typer.Exit(1)
 
     client = None
     try:
         client = get_router_client()
         set_wifi_channel(client, band_key, channel)
-        if channel == 0:
-            print_success(f"{label} channel avtomatik rejimga o'tkazildi.")
+        msg = (
+            f"{label} channel avtomatik rejimga o'tkazildi."
+            if channel == 0
+            else f"{label} channel {channel} ga o'zgartirildi."
+        )
+        if is_json():
+            emit_ok(msg, data={"band": label, "channel": channel})
         else:
-            print_success(f"{label} channel {channel} ga o'zgartirildi.")
+            print_success(msg)
     except Exception as e:
-        print_error(str(e))
+        if is_json():
+            emit_error(classify_exception(e), str(e))
+        else:
+            print_error(str(e))
         raise typer.Exit(1)
     finally:
         if client:

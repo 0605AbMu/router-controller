@@ -2,8 +2,19 @@ from typing import Optional
 import typer
 from router_controller.config import Config, STORAGE_FILE, STORAGE_KEYRING
 from router_controller.utils.display import console, print_success, print_error, print_warning
+from router_controller.utils.output import is_json, emit_data, emit_ok, emit_error
 
 app = typer.Typer(help="Konfiguratsiya boshqarish.", no_args_is_help=True)
+
+
+def _config_dict(cfg: Config) -> dict:
+    return {
+        "configured": cfg.is_configured(),
+        "host": cfg.get_host(),
+        "username": cfg.get_username(),
+        "password_saved": bool(cfg.get_password()) if cfg.is_configured() else False,
+        "storage": cfg.get_storage(),
+    }
 
 
 @app.command("set")
@@ -33,12 +44,21 @@ def config_set(
         try:
             cfg.set_storage(storage)
         except (ValueError, RuntimeError) as e:
-            print_error(str(e))
+            if is_json():
+                emit_error("INVALID_INPUT", str(e))
+            else:
+                print_error(str(e))
             raise typer.Exit(1)
 
     if not host:
+        if is_json():
+            emit_error("INVALID_INPUT", "--host majburiy (JSON rejimida prompt ishlamaydi).")
+            raise typer.Exit(1)
         host = typer.prompt("Router manzili (misol: http://192.168.0.1)")
     if not password:
+        if is_json():
+            emit_error("INVALID_INPUT", "--password majburiy (JSON rejimida prompt ishlamaydi).")
+            raise typer.Exit(1)
         password = typer.prompt("Parol", hide_input=True)
 
     cfg.set_host(host.rstrip("/"))
@@ -47,16 +67,25 @@ def config_set(
     if username:
         cfg.set_username(username)
 
-    print_success(
+    msg = (
         f"Saqlandi! Host: {cfg.get_host()}, Username: {cfg.get_username()}, "
         f"Storage: {cfg.get_storage()}"
     )
+    if is_json():
+        emit_ok(msg, data=_config_dict(cfg))
+    else:
+        print_success(msg)
 
 
 @app.command("show")
 def config_show():
     """Hozirgi konfiguratsiyani ko'rsatish."""
     cfg = Config()
+
+    if is_json():
+        emit_data(_config_dict(cfg))
+        return
+
     console.print()
     if not cfg.is_configured():
         print_warning("Konfiguratsiya topilmadi. `router config set` bilan sozlang.")
@@ -77,9 +106,16 @@ def config_clear(
 ):
     """Barcha saqlangan sozlamalarni o'chirish."""
     if not yes:
+        if is_json():
+            emit_error("INVALID_INPUT", "--yes/-y majburiy (JSON rejimida prompt ishlamaydi).")
+            raise typer.Exit(1)
         confirmed = typer.confirm("Barcha konfiguratsiya o'chiriladi. Davom ettirasizmi?")
         if not confirmed:
             console.print("Bekor qilindi.")
             raise typer.Exit(0)
     Config().clear()
-    print_success("Konfiguratsiya o'chirildi.")
+    msg = "Konfiguratsiya o'chirildi."
+    if is_json():
+        emit_ok(msg)
+    else:
+        print_success(msg)

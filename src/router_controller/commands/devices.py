@@ -2,6 +2,8 @@ from typing import Optional
 import typer
 from router_controller.client import get_router_client
 from router_controller.utils.display import print_devices_table, print_error
+from router_controller.utils.output import is_json, emit_data, emit_error
+from router_controller.utils.serializers import serialize_device, classify_exception
 
 
 def command(
@@ -51,10 +53,17 @@ def command(
             return (d.hostname or "").lower()
 
         devices = sorted(devices, key=sort_key)
-        print_devices_table(devices)
+
+        if is_json():
+            emit_data({"devices": [serialize_device(d) for d in devices]})
+        else:
+            print_devices_table(devices)
 
     except Exception as e:
-        print_error(str(e))
+        if is_json():
+            emit_error(classify_exception(e), str(e))
+        else:
+            print_error(str(e))
         raise typer.Exit(1)
     finally:
         if client:
