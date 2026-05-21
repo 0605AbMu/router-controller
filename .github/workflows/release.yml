@@ -13,23 +13,23 @@ jobs:
     name: Build (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             artifact_name: router
             asset_name: router-linux-x86_64
+            pyinstaller_args: ""
 
           - os: windows-latest
             artifact_name: router.exe
             asset_name: router-windows-x86_64.exe
+            pyinstaller_args: ""
 
           - os: macos-latest
             artifact_name: router
-            asset_name: router-macos-x86_64
-
-          - os: macos-13
-            artifact_name: router
-            asset_name: router-macos-arm64
+            asset_name: router-macos-universal
+            pyinstaller_args: "--target-arch universal2"
 
     steps:
       - name: Checkout
@@ -49,7 +49,7 @@ jobs:
 
       - name: PyInstaller bilan build qilish
         run: |
-          pyinstaller --onefile --name router src/router_controller/main.py
+          pyinstaller --onefile --name router ${{ matrix.pyinstaller_args }} src/router_controller/main.py
 
       - name: Artifact yuklash
         uses: actions/upload-artifact@v4
@@ -70,10 +70,9 @@ jobs:
 
       - name: Fayllarni to'g'ri nomlash
         run: |
-          mv artifacts/router-linux-x86_64/router        artifacts/router-linux-x86_64
-          mv artifacts/router-windows-x86_64.exe/router.exe  artifacts/router-windows-x86_64.exe
-          mv artifacts/router-macos-x86_64/router        artifacts/router-macos-x86_64
-          mv artifacts/router-macos-arm64/router         artifacts/router-macos-arm64
+          mv artifacts/router-linux-x86_64/router          artifacts/router-linux-x86_64
+          mv artifacts/router-windows-x86_64.exe/router.exe artifacts/router-windows-x86_64.exe
+          mv artifacts/router-macos-universal/router        artifacts/router-macos-universal
 
       - name: Release yaratish va fayllarni yuklash
         uses: softprops/action-gh-release@v2
@@ -87,15 +86,9 @@ jobs:
 
             ### O'rnatish
 
-            **macOS (Apple Silicon / ARM)**
+            **macOS (Apple Silicon + Intel — Universal)**
             ```bash
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-macos-arm64 -o router
-            chmod +x router && sudo mv router /usr/local/bin/
-            ```
-
-            **macOS (Intel / x86_64)**
-            ```bash
-            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-macos-x86_64 -o router
+            curl -L https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/router-macos-universal -o router
             chmod +x router && sudo mv router /usr/local/bin/
             ```
 
@@ -124,8 +117,7 @@ jobs:
           files: |
             artifacts/router-linux-x86_64
             artifacts/router-windows-x86_64.exe
-            artifacts/router-macos-x86_64
-            artifacts/router-macos-arm64
+            artifacts/router-macos-universal
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
