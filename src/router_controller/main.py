@@ -1,3 +1,18 @@
+import sys
+
+# Windows'da stdout/stderr standart cp1252 (charmap) encoding bilan
+# ochiladi. PyInstaller bundle'i ichidagi Python interpreter
+# PYTHONIOENCODING env var'ni boot vaqtidan keyin qabul qiladi va
+# allaqachon ochilgan stream'larga ta'sir qilmaydi. Natija: '✓' va
+# boshqa Unicode belgilar bilan UnicodeEncodeError. Yechim: kod ichida
+# stream'larni qayta UTF-8'ga sozlash (env var'larsiz, ishonchli).
+if sys.platform == "win32":
+    for _stream in (sys.stdout, sys.stderr):
+        try:
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, OSError):
+            pass
+
 import typer
 from router_controller import __version__
 from router_controller.commands import status, devices, firmware, dhcp, reboot, snapshot
